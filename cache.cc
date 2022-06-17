@@ -541,13 +541,20 @@ hit cache_c::only_access_more(addr_t address) {
 }
 
 hit cache_c::write_back(addr_t address, int* evicted_tag_address) {
+
+
+    //지우기
+    //m_num_writes++;
+    //
+
     int idx_block = address % (m_num_sets * m_line_size);
     int idx = idx_block / (m_line_size);
     int tag = address / (m_num_sets * m_line_size);
     for (int i = 0; i < c_assoc; i++) {
         if (m_set[idx]->m_entry[i].m_valid == true && m_set[idx]->m_entry[i].m_tag == tag) {
             //원래 주소에 덮어쓰면 됨
-            m_num_hits++;
+            //m_num_hits++;
+            //통계량 바꾸면 안됨!
             m_set[idx]->m_entry[i].m_dirty = true;
             return WRITE_HIT;
         }
@@ -639,7 +646,7 @@ hit cache_c::only_read(addr_t address, int* evicted_tag_address) {
 }
 
 void cache_c::Invalidate(addr_t address) {
-    m_num_invalidate++;
+    //m_num_invalidate++;
     int idx_block = address % (m_num_sets * m_line_size);
     int idx = idx_block / (m_line_size);
     int tag = address / (m_num_sets * m_line_size);
@@ -649,6 +656,8 @@ void cache_c::Invalidate(addr_t address) {
     for (int i = 0; i < c_assoc; i++) {
         if (m_set[idx]->m_entry[i].m_valid == true && m_set[idx]->m_entry[i].m_tag == tag) {
             //해당 항목이 존재하면 invalidate
+            m_num_invalidate++; //여기 까지 와야 invalidate가 진행됨!!!!!!!
+
             m_set[idx]->m_entry[i].m_valid = false;
             if (m_set[idx]->m_entry[i].m_dirty == true) { //dirty이면 write_back
                 m_num_writebacks++; //바로 메모리로 WB.. L2생각 안해도 ok
@@ -765,34 +774,44 @@ void multi_cache::access(addr_t address, int access_type) {
             if (L2_result == READ_MISS_VALID_CLEAN || L2_result == READ_MISS_VALID_DIRTY) {
                 //만약 L2에서 evict가 일어나는 경우 해당 주소가 L1에 있는지 확인
                 L1_D_cache->Invalidate(evicted_address_2);
+
+                //Invalidate시 L1_I도 봐주는 게 맞을지도...?
+                L1_I_cache->Invalidate(evicted_address_2);
             }
             //else의 경우 L2에서 evict되는 것 없음!
         }
 
         else { //L1의 evicted block이 dirty일 때,즉 WB해줘야 하는 경우
+            //이 경우도 WB를 먼저 해줘야 하는거 아닐까??????
+            //WB를 나중에 하면 L2로 읽어온 값이 WB로 사라질 수도 있을수도..
+            //Inclusivce가 깨짐 근데 그러면 L2에서 invalidate L1에 진행하긴 하네...
+
             L2_result = L2_cache->read(address, &evicted_address_2);
 
 
             ///잠만 L2 hit인거랑 MISS_INVALID랑 같이 해도 됨??
             //그런듯...?
 
-
-
-
             if (L2_result == READ_HIT || L2_result == READ_MISS_INVALID) {
                 WB_result = L2_cache->write_back(evicted_address, &evicted_address_WB); //없어진 L1 block 내용을 써야함
                 if (WB_result == WRITE_MISS_VALID_CLEAN || WB_result == WRITE_MISS_VALID_DIRTY) {
                     //만약 WB 결과 L2에서 또 evict되면
                     L1_D_cache->Invalidate(evicted_address_WB);
+
+                    L1_I_cache->Invalidate(evicted_address_WB);
                 }
             }
 
             else if (L2_result == READ_MISS_VALID_CLEAN || L2_result == READ_MISS_VALID_DIRTY) {
                 //일단 L2의 read결과 evict...
                 L1_D_cache->Invalidate(evicted_address_2);
+
+                L1_I_cache->Invalidate(evicted_address_2);
                 WB_result = L2_cache->write_back(evicted_address, &evicted_address_WB);
                 if (WB_result == WRITE_MISS_VALID_CLEAN || WB_result == WRITE_MISS_VALID_DIRTY) {
                     L1_D_cache->Invalidate(evicted_address_WB);
+
+                    L1_I_cache->Invalidate(evicted_address_WB);
                 }
             }
 
@@ -828,6 +847,8 @@ void multi_cache::access(addr_t address, int access_type) {
 
                 else { //읽어온 결과 L2 evict 생김 ->L1 invalidate
                     L1_D_cache->Invalidate(evicted_address_2);
+
+                    L1_I_cache->Invalidate(evicted_address_2);
                 }
             }
         }
@@ -841,6 +862,8 @@ void multi_cache::access(addr_t address, int access_type) {
                 //이 때 L2의 WB결과 evict이 있으면 Invalidate... 여기서 L1이 또 dirty이면 바로 mem으로 감
                 if (WB_result == WRITE_MISS_VALID_CLEAN || WB_result == WRITE_MISS_VALID_DIRTY) {
                     L1_D_cache->Invalidate(evicted_address_WB);
+
+                    L1_I_cache->Invalidate(evicted_address_WB);
                 }
             }
 
@@ -850,6 +873,8 @@ void multi_cache::access(addr_t address, int access_type) {
                 WB_result = L2_cache->write_back(evicted_address, &evicted_address_WB);
                 if (WB_result == WRITE_MISS_VALID_CLEAN || WB_result == WRITE_MISS_VALID_DIRTY) {
                     L1_D_cache->Invalidate(evicted_address_WB);
+
+                    L1_I_cache->Invalidate(evicted_address_WB);
                 }
 
                 //일단 L2에 WB한 다음에 메모리에서 읽어옴, 즉 L1에 있는 항목을 L2에도 만들어줌
@@ -862,40 +887,9 @@ void multi_cache::access(addr_t address, int access_type) {
 
                 else { //읽어온 결과 L2에서 evict 된 것이 있음 ->L1 invalidate
                     L1_D_cache->Invalidate(evicted_address_2);
+
+                    L1_I_cache->Invalidate(evicted_address_2);
                 }
-                ///////////////////////////////////////////////////////////
-                /*
-                //일단 L2가 miss에서 시작하여 결과가 절대 hit은 아님!
-                if (L2_only_read_result == READ_MISS_INVALID) {
-                    //그냥 WB logic만 실행시켜줌 (from L1 dirty)
-                    WB_result = L2_cache->write_back(evicted_address, &evicted_address_WB);
-                    if (WB_result == WRITE_MISS_VALID_CLEAN || WB_result == WRITE_MISS_VALID_DIRTY) {
-                        L1_D_cache->Invalidate(evicted_address_WB);
-                    }
-                }
-
-                else { //L2결과가 Valid한것들... 즉 L2에서 evict이 존재함
-
-                    //WB먼저 해주는게 맞음 그 뒤에 읽어오는 logic을 처리해야함
-                    //L1에 있는 게 무조건 L2에도 항목이 있어야 하는데
-                    //WB가 늦게 하면 읽어온 항목이 사라질 위험이 있다.
-
-                    //이 두개 순서 상관 없을까???????????????????????????
-                    //1. L2가 mem에서 읽어와 해당 항목 만들기
-                    //  ->여기서 읽었는데 evict이 되면 Invalidate evicted_2가 실행됨
-
-                    //2. L1이 처음에 evict되어 dirty이고 이게 L2로 WB되는 logic (이어짐)
-
-                    // 이 커다란 두개의 logic 순서???
-
-                    L1_D_cache->Invalidate(evicted_address_2);
-
-                    WB_result = L2_cache->write_back(evicted_address, &evicted_address_WB);
-                    if (WB_result == WRITE_MISS_VALID_CLEAN || WB_result == WRITE_MISS_VALID_DIRTY) {
-                        L1_D_cache->Invalidate(evicted_address_WB);
-                    }
-                */
-
             }
         }
             
@@ -910,26 +904,44 @@ void multi_cache::access(addr_t address, int access_type) {
             L2_result = L2_cache->read(address, &evicted_address_2);
             if (L2_result == READ_MISS_VALID_CLEAN || L2_result == READ_MISS_VALID_DIRTY) {
                 //만약 L2에서 evict가 일어나는 경우 해당 주소가 L1에 있는지 확인
+                L1_D_cache->Invalidate(evicted_address_2);
+
+                //Invalidate시 L1_I도 봐주는 게 맞을지도...?
                 L1_I_cache->Invalidate(evicted_address_2);
             }
             //else의 경우 L2에서 evict되는 것 없음!
         }
 
         else { //L1의 evicted block이 dirty일 때,즉 WB해줘야 하는 경우
+            //이 경우도 WB를 먼저 해줘야 하는거 아닐까??????
+            //WB를 나중에 하면 L2로 읽어온 값이 WB로 사라질 수도 있을수도..
+            //Inclusivce가 깨짐 근데 그러면 L2에서 invalidate L1에 진행하긴 하네...
+
             L2_result = L2_cache->read(address, &evicted_address_2);
+
+
+            ///잠만 L2 hit인거랑 MISS_INVALID랑 같이 해도 됨??
+            //그런듯...?
+
             if (L2_result == READ_HIT || L2_result == READ_MISS_INVALID) {
                 WB_result = L2_cache->write_back(evicted_address, &evicted_address_WB); //없어진 L1 block 내용을 써야함
-                if (WB_result == READ_MISS_VALID_CLEAN || WB_result == READ_MISS_VALID_DIRTY) {
+                if (WB_result == WRITE_MISS_VALID_CLEAN || WB_result == WRITE_MISS_VALID_DIRTY) {
                     //만약 WB 결과 L2에서 또 evict되면
+                    L1_D_cache->Invalidate(evicted_address_WB);
+
                     L1_I_cache->Invalidate(evicted_address_WB);
                 }
             }
 
             else if (L2_result == READ_MISS_VALID_CLEAN || L2_result == READ_MISS_VALID_DIRTY) {
                 //일단 L2의 read결과 evict...
+                L1_D_cache->Invalidate(evicted_address_2);
+
                 L1_I_cache->Invalidate(evicted_address_2);
                 WB_result = L2_cache->write_back(evicted_address, &evicted_address_WB);
-                if (WB_result == READ_MISS_VALID_CLEAN || WB_result == READ_MISS_VALID_DIRTY) {
+                if (WB_result == WRITE_MISS_VALID_CLEAN || WB_result == WRITE_MISS_VALID_DIRTY) {
+                    L1_D_cache->Invalidate(evicted_address_WB);
+
                     L1_I_cache->Invalidate(evicted_address_WB);
                 }
             }
