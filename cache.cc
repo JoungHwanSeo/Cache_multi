@@ -688,6 +688,30 @@ void cache_c::print_stats() {
 
 }
 
+void cache_c::L1_print(){
+    std::cout << "------------------------------" << "\n";
+    std::cout << m_name << " Hit Rate: " << (double)m_num_hits / m_num_accesses * 100 << " % \n";
+    std::cout << "------------------------------" << "\n";
+    std::cout << "number of accesses: " << m_num_accesses << "\n";
+    std::cout << "number of hits: " << m_num_hits << "\n";
+    std::cout << "number of misses: " << m_num_misses << "\n";
+    std::cout << "number of writes: " << m_num_writes << "\n";
+    std::cout << "number of writebacks: " << m_num_writebacks << "\n";
+    std::cout << "number of invalidates: " << m_num_invalidate << "\n";
+    std::cout << "number of writeback to mem due to Invalidation: " << m_num_writebacks_to_mem << "\n";
+
+}
+
+void cache_c::L2_print() {
+    std::cout << "------------------------------" << "\n";
+    std::cout << m_name << " Hit Rate: " << (double)m_num_hits / m_num_accesses * 100 << " % \n";
+    std::cout << "------------------------------" << "\n";
+    std::cout << "number of accesses: " << m_num_accesses << "\n";
+    std::cout << "number of hits: " << m_num_hits << "\n";
+    std::cout << "number of misses: " << m_num_misses << "\n";
+    //std::cout << "number of writebacks: " << m_num_writebacks << "\n";
+}
+
 bool cache_c::Is_hit(addr_t address, int* hit_asso) {
     int idx_block = address % (m_num_sets * m_line_size);
     int idx = idx_block / (m_line_size);
@@ -785,6 +809,10 @@ void multi_cache::access(addr_t address, int access_type) {
             //이 경우도 WB를 먼저 해줘야 하는거 아닐까??????
             //WB를 나중에 하면 L2로 읽어온 값이 WB로 사라질 수도 있을수도..
             //Inclusivce가 깨짐 근데 그러면 L2에서 invalidate L1에 진행하긴 하네...
+            //즉 순서 상관은 없을듯
+
+            //잠만 아닌가?
+            //
 
             L2_result = L2_cache->read(address, &evicted_address_2);
 
@@ -1221,10 +1249,10 @@ void multi_cache::L1_evict(cache_c* L1, cache_c* L2, addr_t address, bool Is_rea
 */
 
 void multi_cache::print_status(void) {
-    L1_I_cache->print_stats();
+    L1_I_cache->L1_print();
     std::cout << std::endl;
-    L1_D_cache->print_stats();
+    L1_D_cache->L1_print();
     std::cout << std::endl;
-    L2_cache->print_stats();
+    L2_cache->L2_print();
     std::cout << std::endl;
 }

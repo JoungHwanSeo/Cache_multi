@@ -59,6 +59,10 @@ public:
 
     void print_stats(void);
 
+    void L1_print();
+
+    void L2_print();
+
     //해당 address 접근시 hit이면 hit asseo에 해당 way # return
     bool Is_hit(addr_t address, int* hit_asso);
 
